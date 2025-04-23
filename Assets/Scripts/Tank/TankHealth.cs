@@ -1,16 +1,17 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using UnityEngine.UI;
 
 namespace Tanks.Complete
 {
-    public class TankHealth : MonoBehaviour
+    public class TankHealth : MonoBehaviour, IDammage
     {
         public float m_StartingHealth = 100f;               // The amount of health each tank starts with.
-        public Slider m_Slider;                             // The slider to represent how much health the tank currently has.
-        public Image m_FillImage;                           // The image component of the slider.
-        public Color m_FullHealthColor = Color.green;    // The color the health bar will be when on full health.
-        public Color m_ZeroHealthColor = Color.red;      // The color the health bar will be when on no health.
-        public GameObject m_ExplosionPrefab;                // A prefab that will be instantiated in Awake, then used whenever the tank dies.
+        [SerializeField] Slider m_Slider;                             // The slider to represent how much health the tank currently has.
+        [SerializeField] Image m_FillImage;                           // The image component of the slider.
+        [SerializeField] Color m_FullHealthColor = Color.green;    // The color the health bar will be when on full health.
+        [SerializeField] Color m_ZeroHealthColor = Color.red;      // The color the health bar will be when on no health.
+        [SerializeField] GameObject m_ExplosionPrefab;                // A prefab that will be instantiated in Awake, then used whenever the tank dies.
         [HideInInspector] public bool m_HasShield;          // Has the tank picked up a shield power up?
         
         
@@ -20,6 +21,76 @@ namespace Tanks.Complete
         private bool m_Dead;                                // Has the tank been reduced beyond zero health yet?
         private float m_ShieldValue;                        // Percentage of reduced damage when the tank has a shield.
         private bool m_IsInvincible;                        // Is the tank invincible in this moment?
+
+
+
+        //New variables 
+
+        public float CurrentHealth => Mathf.RoundToInt(m_CurrentHealth);
+        public float MaxHealth => Mathf.RoundToInt(m_StartingHealth);
+        public bool IsDead => m_Dead;
+
+        //New events
+
+        public event Action<float> OnTakeDamage;
+
+        public event Action<float> OnHeal;
+
+        public event Action OnDeath;
+
+        public event Action OnRevive;
+
+        public event Action OnHealthUpdate;
+
+        //New methods
+
+
+        //explicite void IHealth.TakeDamage(int damage) 
+
+        public void TakeDamage(float damage) //implicit
+        {
+            if (!m_IsInvincible)
+            {
+                int effectiveDamage = Mathf.RoundToInt(damage * (1 - m_ShieldValue));
+                m_CurrentHealth -= effectiveDamage;
+                OnHealthUpdate?.Invoke();
+
+                OnTakeDamage?.Invoke(effectiveDamage);
+
+                if (m_CurrentHealth <= 0f && !m_Dead)
+                {
+                    HandleDeath();
+                }
+            }
+        }
+
+        public void Heal(float amount)
+        {
+            float healAmount = Mathf.Min(amount, m_StartingHealth - m_CurrentHealth);
+            m_CurrentHealth += healAmount;
+            SetHealthUI();
+
+            OnHeal?.Invoke(healAmount);
+
+            if (m_CurrentHealth > 0f && m_Dead)
+            {
+                m_Dead = false;
+                OnRevive?.Invoke();
+            }
+        }
+
+        public float GetCurrentHealth()
+        {
+            return Mathf.RoundToInt(m_CurrentHealth);
+        }
+
+        public float GetMaxHealth()
+        {
+            return Mathf.RoundToInt(m_StartingHealth);
+        }
+
+
+        //original code
 
         private void Awake ()
         {
@@ -55,46 +126,6 @@ namespace Tanks.Complete
             SetHealthUI();
         }
 
-
-        public void TakeDamage (float amount)
-        {
-            // Check if the tank is not invincible
-            if (!m_IsInvincible)
-            {
-                // Reduce current health by the amount of damage done.
-                m_CurrentHealth -= amount * (1 - m_ShieldValue);
-
-                // Change the UI elements appropriately.
-                SetHealthUI ();
-
-                // If the current health is at or below zero and it has not yet been registered, call OnDeath.
-                if (m_CurrentHealth <= 0f && !m_Dead)
-                {
-                    OnDeath ();
-                }
-            }
-        }
-
-
-        public void IncreaseHealth(float amount)
-        {
-            // Check if adding the amount would keep the health within the maximum limit
-            if (m_CurrentHealth + amount <= m_StartingHealth)
-            {
-                // If the new health value is within the limit, add the amount
-                m_CurrentHealth += amount;
-            }
-            else
-            {
-                // If the new health exceeds the starting health, set it at the maximum
-                m_CurrentHealth = m_StartingHealth;
-            }
-
-            // Change the UI elements appropriately.
-            SetHealthUI();
-        }
-
-
         public void ToggleShield (float shieldAmount)
         {
             // Inverts the value of has shield.
@@ -127,7 +158,7 @@ namespace Tanks.Complete
         }
 
 
-        private void OnDeath ()
+        private void HandleDeath ()
         {
             // Set the flag so that this function is only called once.
             m_Dead = true;
